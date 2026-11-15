@@ -1,0 +1,142 @@
+// VibePath's dialogs: the Preview before a PATH change is applied, and the entry dialog (Add…
+// and Edit…). They draw; Rust decides.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Type, Icons, Icon, Button, ButtonKind, Dialog, Field } from "@vibeware";
+import { AppIcons } from "app-icons.slint";
+import { Line } from "types.slint";
+import { LineText } from "detail.slint";
+
+export struct PreviewInfo {
+    title: string,
+    lines: [Line],       // the diff: "  C:\a", "+ C:\new", "− C:\old", "↕ C:\moved"
+    notes: [Line],       // the type change, the length after, the findings the new value has
+    apply: string,       // "Apply" / "Apply…" (the shield)
+    admin: bool,
+    can-apply: bool,
+    busy: bool,
+}
+
+export component PreviewDialog {
+    in property <PreviewInfo> p;
+    callback apply();
+    callback cancelled();
+    Dialog {
+        width: root.width;
+        height: root.height;
+        title: root.p.title;
+        dialog-width: 640px;
+        // Enter does not change PATH: a click on Apply does.
+        enter-accepts: false;
+        cancelled => { root.cancelled(); }
+        Rectangle {
+            height: Math.max(60px, Math.min(300px, list.preferred-height + 2px));
+            border-width: 1px;
+            border-color: Theme.line;
+            sv := ScrollView {
+                x: 1px;
+                y: 1px;
+                width: parent.width - 2px;
+                height: parent.height - 2px;
+                content-width: self.visible-width;
+                content-height: list.preferred-height;
+                list := VerticalLayout {
+                    width: sv.visible-width;
+                    padding: 8px;
+                    spacing: 2px;
+                    alignment: start;
+                    accessible-role: AccessibleRole.list;
+                    accessible-label: "Changes";
+                    for l in root.p.lines: LineText { l: l; }
+                }
+            }
+        }
+        for n in root.p.notes: LineText { l: n; }
+        if root.p.admin: HorizontalLayout {
+            spacing: 8px;
+            VerticalLayout {
+                alignment: start;
+                padding-top: 1px;
+                Icon { path: AppIcons.shield; tint: Theme.accent; }
+            }
+            Text {
+                text: "Machine PATH needs administrator rights: Windows asks once. Saying no changes nothing.";
+                font-size: Type.small;
+                color: Theme.ink-2;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+                min-height: self.preferred-height;
+            }
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Button { text: "Cancel"; kind: ButtonKind.secondary; clicked => { root.cancelled(); } }
+            Button {
+                text: root.p.busy ? "Applying…" : root.p.apply;
+                icon: root.p.admin ? AppIcons.shield : "";
+                kind: ButtonKind.primary;
+                enabled: root.p.can-apply && !root.p.busy;
+                clicked => { root.apply(); }
+            }
+        }
+    }
+}
+
+export component EntryDialog {
+    in property <string> title;
+    in-out property <string> text;
+    in property <string> problem;
+    in property <string> ok-text;
+    in property <bool> can-browse;
+    callback edited(string);
+    callback escaped() -> bool;
+    callback browse();
+    callback ok();
+    callback cancelled();
+    Dialog {
+        width: root.width;
+        height: root.height;
+        title: root.title;
+        dialog-width: 560px;
+        cancelled => { root.cancelled(); }
+        accepted => { root.ok(); }
+        HorizontalLayout {
+            spacing: 8px;
+            Field {
+                a11y-name: "Folder";
+                placeholder: "C:\\Tools\\bin or %USERPROFILE%\\bin";
+                mono: true;
+                text <=> root.text;
+                edited(t) => { root.edited(t); }
+                escaped => { root.escaped() }
+            }
+            if root.can-browse: Button {
+                text: "Browse…";
+                icon: Icons.folder-open;
+                kind: ButtonKind.secondary;
+                clicked => { root.browse(); }
+            }
+        }
+        if root.problem != "": Text {
+            text: root.problem;
+            font-size: Type.small;
+            color: Theme.warn-text;
+            wrap: word-wrap;
+            min-height: self.preferred-height;
+        }
+        Text {
+            text: "Kept as typed: %VARIABLES% stay, quotes go, a file means its folder.";
+            font-size: Type.small;
+            color: Theme.ink-3;
+            wrap: word-wrap;
+            min-height: self.preferred-height;
+        }
+        HorizontalLayout {
+            alignment: end;
+            spacing: 8px;
+            Button { text: "Cancel"; kind: ButtonKind.secondary; clicked => { root.cancelled(); } }
+            Button { text: root.ok-text; kind: ButtonKind.primary; clicked => { root.ok(); } }
+        }
+    }
+}

@@ -1,0 +1,239 @@
+// The top bar: the command field and Resolve, the Portable chip, Copy report, theme and About;
+// under it the tabs, and on the Command tab the shell, the context and its current folder.
+// It draws; Rust decides.
+
+import { Theme, Type, Icons, Button, ButtonKind, IconButton, Chamfer, TipArea, Field, Select, Segmented } from "@vibeware";
+import { Brand } from "brand.slint";
+import { AppIcons } from "app-icons.slint";
+
+// "Portable": the copy runs from a stick, settings beside the exe.
+component Chip inherits Rectangle {
+    in property <string> text;
+    in property <string> tooltip;
+    height: 22px;
+    width: lay.preferred-width;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.text;
+    accessible-description: root.tooltip;
+    Chamfer {
+        width: 100%;
+        height: 100%;
+        stroke: Theme.line-strong;
+        cut: 5px;
+    }
+    lay := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        Text {
+            text: root.text;
+            font-family: Type.mono;
+            font-size: Type.small;
+            color: Theme.ink-2;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+    TipArea { tooltip: root.tooltip; }
+}
+
+export component TopBar inherits Rectangle {
+    in-out property <string> command;
+    in property <bool> resolving;
+    in property <bool> portable;
+    in property <string> portable-tip;
+    in property <bool> inert;
+
+    callback command-edited(string);
+    callback command-escaped() -> bool;
+    callback resolve();
+    callback copy-report() -> bool;
+    callback toggle-theme();
+    callback about();
+
+    public function focus-command() {
+        field.focus-input();
+    }
+
+    height: 48px;
+    background: Theme.bg;
+
+    property <bool> copied;
+    settle := Timer {
+        interval: 1500ms;
+        running: false;
+        triggered => {
+            root.copied = false;
+            self.running = false;
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 10px;
+        spacing: 8px;
+        Brand { horizontal-stretch: 0; }
+        Rectangle { width: 10px; }
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            field := Field {
+                a11y-name: "Command";
+                placeholder: "A command to look up: python, npm, where, .\\tool";
+                mono: true;
+                inert: root.inert;
+                text <=> root.command;
+                edited(t) => { root.command-edited(t); }
+                accepted(t) => { root.resolve(); }
+                escaped => { root.command-escaped() }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            Button {
+                text: root.resolving ? "Checking…" : "Resolve";
+                icon: AppIcons.resolve;
+                kind: ButtonKind.primary;
+                tooltip: "Every file this command could mean, in each shell's order; VibePath runs none of them (Enter)";
+                inert: root.inert;
+                clicked => { root.resolve(); }
+            }
+        }
+        Rectangle { width: 4px; }
+        if root.portable: VerticalLayout {
+            alignment: center;
+            Chip { text: "Portable"; tooltip: root.portable-tip; }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: root.copied ? Icons.check : Icons.copy;
+                label: root.copied ? "Copied" : "Copy report";
+                tooltip: "Copy the report as text";
+                inert: root.inert;
+                enter-presses: false;
+                clicked => {
+                    if (root.copy-report()) {
+                        root.copied = true;
+                        settle.running = true;
+                        settle.restart();
+                    }
+                }
+            }
+        }
+        Rectangle {
+            width: 1px;
+            background: Theme.line;
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.theme;
+                label: "Theme";
+                tooltip: Theme.dark ? "Light theme" : "Dark theme";
+                inert: root.inert;
+                clicked => { root.toggle-theme(); }
+            }
+        }
+        VerticalLayout {
+            alignment: center;
+            IconButton {
+                icon: Icons.info;
+                label: "About";
+                tooltip: "About VibePath";
+                inert: root.inert;
+                clicked => { root.about(); }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}
+
+// The tabs, and the Command tab's shell, context and current folder.
+export component TabBar inherits Rectangle {
+    in property <int> tab;
+    in property <[string]> shells;
+    in property <int> shell;
+    in property <[string]> contexts;
+    in property <int> context;
+    in property <bool> cwd-shown;
+    in property <bool> cwd-editable;
+    in-out property <string> cwd;
+    in property <bool> inert;
+
+    callback tab-changed(int);
+    callback shell-changed(int);
+    callback context-changed(int);
+    callback cwd-accepted(string);
+    callback cwd-escaped() -> bool;
+
+    height: 44px;
+    background: Theme.bg;
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Segmented {
+                label: "Tabs";
+                options: ["Command", "PATH", "Running apps", "History"];
+                selected: root.tab;
+                controlled: true;
+                inert: root.inert;
+                changed(i) => { root.tab-changed(i); }
+            }
+        }
+        Rectangle { horizontal-stretch: 1; min-width: 8px; }
+        if root.tab == 0: VerticalLayout {
+            alignment: center;
+            Select {
+                width: 170px;
+                label: "Shell";
+                options: root.shells;
+                selected: root.shell;
+                controlled: true;
+                inert: root.inert;
+                changed(i) => { root.shell-changed(i); }
+            }
+        }
+        if root.tab == 0: VerticalLayout {
+            alignment: center;
+            Select {
+                width: 210px;
+                label: "Context";
+                options: root.contexts;
+                selected: root.context;
+                controlled: true;
+                inert: root.inert;
+                changed(i) => { root.context-changed(i); }
+            }
+        }
+        if root.tab == 0 && root.cwd-shown: VerticalLayout {
+            alignment: center;
+            Field {
+                min-width: 120px;
+                max-width: 280px;
+                horizontal-stretch: 1;
+                label: "in";
+                placeholder: "your profile folder";
+                a11y-name: "Current folder";
+                mono: true;
+                enabled: root.cwd-editable;
+                inert: root.inert;
+                text <=> root.cwd;
+                accepted(t) => { root.cwd-accepted(t); }
+                escaped => { root.cwd-escaped() }
+            }
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}

@@ -1,0 +1,179 @@
+// The detail panel beside every list: the selected item's title and state, its headline, the
+// actions that apply, its fields by section, then lines (findings, a diff). Long values wrap;
+// one accessibility node per field and per line.
+
+import { ScrollView } from "std-widgets.slint";
+import { Theme, Type, Button, ButtonKind } from "@vibeware";
+import { Line, Pair, Action } from "types.slint";
+import { States, StateDot } from "rows.slint";
+import { AppIcons } from "app-icons.slint";
+
+export component SectionRow inherits HorizontalLayout {
+    in property <string> text;
+    padding-top: 10px;
+    padding-bottom: 4px;
+    spacing: 10px;
+    Text {
+        text: root.text;
+        font-family: Type.mono;
+        font-size: Type.small;
+        color: Theme.ink-3;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+        Rectangle {
+            height: 1px;
+            background: Theme.line;
+        }
+    }
+}
+
+component FieldRow inherits Rectangle {
+    in property <Pair> p;
+    accessible-role: list-item;
+    accessible-label: p.key;
+    accessible-description: p.value;
+    min-height: lay.preferred-height;
+    lay := HorizontalLayout {
+        padding-top: root.p.section ? 0px : 2px;
+        padding-bottom: root.p.section ? 0px : 2px;
+        spacing: 12px;
+        if root.p.section: SectionRow { text: root.p.key; }
+        if !root.p.section: Text {
+            width: 110px;
+            text: root.p.key;
+            font-size: Type.small;
+            color: Theme.ink-3;
+            wrap: word-wrap;
+            min-height: self.preferred-height;
+            accessible-role: none;
+        }
+        if !root.p.section: Text {
+            text: root.p.value;
+            font-family: root.p.mono ? Type.mono : Type.ui;
+            font-size: Type.small;
+            color: Theme.ink-2;
+            // A path breaks anywhere (filling the line), words break between words.
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+            min-width: 0px;
+            min-height: self.preferred-height;
+            accessible-role: none;
+        }
+    }
+}
+
+// A line of text in its state's colour (findings, diff lines, notes).
+export component LineText inherits Text {
+    in property <Line> l;
+    text: root.l.text;
+    font-family: root.l.mono ? Type.mono : Type.ui;
+    font-size: Type.small;
+    font-weight: root.l.strong ? Type.strong : Type.regular;
+    color: root.l.state == 6 ? Theme.accent : root.l.strong && root.l.state < 2 ? Theme.ink : States.ink(root.l.state);
+    wrap: word-wrap;
+    // Wrapped text in a `for` row (VIBEWARE.md, Slint 1.18.1).
+    min-height: self.preferred-height;
+    min-width: 0px;
+}
+
+export component ActionRow inherits HorizontalLayout {
+    in property <[Action]> actions;
+    in property <bool> inert;
+    callback clicked(int);
+    alignment: start;
+    spacing: 8px;
+    for b in root.actions: Button {
+        text: b.text;
+        icon: b.admin ? AppIcons.shield : "";
+        kind: b.primary ? ButtonKind.primary : ButtonKind.secondary;
+        tooltip: b.admin ? "One administrator prompt" : "";
+        enabled: b.enabled;
+        inert: root.inert;
+        clicked => { root.clicked(b.id); }
+    }
+}
+
+export component DetailPanel inherits Rectangle {
+    in property <string> title;
+    in property <int> state;
+    in property <string> word;
+    in property <string> headline;
+    in property <[Pair]> pairs;
+    in property <[Line]> lines;
+    in property <[Action]> actions;
+    in property <string> empty-text;
+    in property <bool> inert;
+    callback action(int);
+
+    // No background: the window's own (Theme.surface) is under it (one fill per region).
+    accessible-role: groupbox;
+    accessible-label: "Details";
+
+    if root.title == "" && root.empty-text != "": Text {
+        x: 24px;
+        width: parent.width - 48px;
+        text: root.empty-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        font-size: Type.small;
+        color: Theme.ink-3;
+        wrap: word-wrap;
+    }
+
+    if root.title != "": sv := ScrollView {
+        content-width: self.visible-width;
+        content-height: content.preferred-height;
+        content := VerticalLayout {
+            width: sv.visible-width;
+            padding-left: 18px;
+            padding-right: 18px;
+            padding-top: 14px;
+            padding-bottom: 14px;
+            spacing: 6px;
+            alignment: start;
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                VerticalLayout {
+                    alignment: center;
+                    StateDot { state: root.state; size: 10px; }
+                }
+                Text {
+                    text: root.title;
+                    font-size: Type.body;
+                    font-weight: Type.strong;
+                    color: Theme.ink;
+                    vertical-alignment: center;
+                    overflow: elide;
+                    min-width: 0px;
+                }
+                if root.word != "": Text {
+                    text: root.word;
+                    font-family: Type.mono;
+                    font-size: Type.small;
+                    color: Theme.as-text(States.color(root.state));
+                    vertical-alignment: center;
+                }
+            }
+            if root.headline != "": Text {
+                text: root.headline;
+                font-size: Type.body;
+                color: root.state == 4 ? Theme.danger-text : root.state == 3 ? Theme.warn-text : Theme.ink;
+                wrap: word-wrap;
+                min-height: self.preferred-height;
+            }
+            if root.actions.length > 0: ActionRow {
+                padding-top: 4px;
+                actions: root.actions;
+                inert: root.inert;
+                clicked(i) => { root.action(i); }
+            }
+            for p in root.pairs: FieldRow { p: p; }
+            for l in root.lines: LineText { l: l; }
+        }
+    }
+}

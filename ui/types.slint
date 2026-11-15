@@ -1,0 +1,42 @@
+// The rows and records Rust hands the window. Every string is formatted in Rust; the .slint
+// files only lay them out.
+// State codes (the family's): 0 checking, 1 ok, 2 quiet, 3 warning, 4 broken, 5 unknown,
+// 6 accent (the winner).
+
+// A line of text with its state's colour (a banner, a detail's notes, a diff line).
+export struct Line {
+    text: string,
+    state: int,
+    mono: bool,
+    strong: bool,
+}
+
+// A button Rust offers (its id comes back through `action`).
+export struct Action {
+    id: int,
+    text: string,
+    admin: bool,     // one administrator prompt: the shield
+    primary: bool,
+    enabled: bool,
+}
+
+// One row of the list on every tab: a match, a PATH entry, a process, a journal entry.
+export struct Row {
+    id: int,
+    number: string,  // "#1", "#12", "" for none
+    title: string,
+    sub: string,
+    right: string,
+    state: int,
+    selected: bool,
+    mono: bool,      // the title is a path
+    a11y: string,    // what a screen reader says about the row
+}
+
+// One row of the detail panel: a section title (`section`), or a key and its value.
+export struct Pair {
+    key: string,
+    value: string,
+    mono: bool,
+    section: bool,
+}

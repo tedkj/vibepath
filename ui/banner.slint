@@ -1,0 +1,38 @@
+// The banner above each tab's list: what the tab says as a whole (the five-shell summary, the
+// Store stub's warning, PATH's header and findings, Restart these, the journal's state), and
+// the tab's buttons. It draws; Rust decides every word.
+
+import { Theme, Type } from "@vibeware";
+import { Line, Action } from "types.slint";
+import { LineText, ActionRow } from "detail.slint";
+
+export component Banner inherits Rectangle {
+    in property <[Line]> lines;
+    in property <[Action]> actions;
+    in property <bool> inert;
+    callback action(int);
+
+    background: Theme.bg;
+    min-height: lay.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: "Summary";
+    lay := VerticalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 4px;
+        for l in root.lines: LineText { l: l; }
+        if root.actions.length > 0: ActionRow {
+            padding-top: 4px;
+            actions: root.actions;
+            inert: root.inert;
+            clicked(i) => { root.action(i); }
+        }
+    }
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+}

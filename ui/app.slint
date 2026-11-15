@@ -1,0 +1,305 @@
+// VibePath's main window. Layout and drawing only; every decision is made in Rust.
+
+import { Theme, Type, TipLayer, Toast, ToastKind } from "@vibeware";
+import { AboutDialog, CheckRow } from "brand.slint";
+import { TopBar, TabBar } from "topbar.slint";
+import { Banner } from "banner.slint";
+import { RowList } from "rows.slint";
+import { DetailPanel } from "detail.slint";
+import { PreviewDialog, EntryDialog, PreviewInfo } from "dialogs.slint";
+import { Line, Action, Row, Pair } from "types.slint";
+
+export { Line, Action, Row, Pair, PreviewInfo }
+
+export struct ToastItem {
+    id: int,
+    text: string,
+    kind: ToastKind,
+    action: string,
+}
+
+export component AppWindow inherits Window {
+    // A constant title: never a name from outside.
+    title: "VibePath";
+    icon: @image-url("../assets/app-128.png");
+    preferred-width: 1180px;
+    preferred-height: 740px;
+    min-width: 960px;
+    min-height: 600px;
+    // The rows' colour covers most of the window (one fill per frame, VIBEWARE.md); the bars and
+    // the banner draw their own.
+    background: Theme.surface;
+    default-font-family: Type.ui;
+    default-font-size: Type.small;
+    default-font-weight: Type.regular;
+
+    in property <string> version;
+    in property <string> status-left;
+    in property <string> status-right;
+    in property <[ToastItem]> toasts;
+    in-out property <bool> about-open;
+    // About's version line and its install check (the controller's words and states).
+    in property <string> about-line;
+    in property <[CheckRow]> check-rows;
+    in property <bool> checking;
+    in property <bool> checked;
+    in-out property <bool> preview-open;
+    in-out property <bool> entry-open;
+    property <bool> dialog-open: root.about-open || root.preview-open || root.entry-open;
+
+    // ---- the bars ----
+    in-out property <string> command;
+    in property <bool> resolving;
+    in property <bool> portable;
+    in property <string> portable-tip;
+    in property <int> tab;
+    in property <[string]> shells;
+    in property <int> shell;
+    in property <[string]> contexts;
+    in property <int> context;
+    in property <bool> cwd-shown;
+    in property <bool> cwd-editable;
+    in-out property <string> cwd;
+
+    // ---- the tab's body ----
+    in property <[Line]> banner-lines;
+    in property <[Action]> banner-actions;
+    in property <string> list-label;
+    in property <[Row]> rows;
+    in property <string> empty-text;
+    in property <length> scroll-top: -1px;
+    in property <int> scroll-seq;
+    in property <string> detail-title;
+    in property <int> detail-state;
+    in property <string> detail-word;
+    in property <string> detail-headline;
+    in property <[Pair]> detail-pairs;
+    in property <[Line]> detail-lines;
+    in property <[Action]> detail-actions;
+    in property <string> detail-empty;
+
+    // ---- the dialogs ----
+    in property <PreviewInfo> preview;
+    in property <string> entry-title;
+    in-out property <string> entry-text;
+    in property <string> entry-problem;
+    in property <string> entry-ok-text;
+    in property <bool> entry-browse;
+
+    callback toggle-theme();
+    // About: "Check this install" pressed (the controller runs it on a worker, once at a time),
+    // and the website link.
+    callback check-install();
+    callback open-site();
+    callback toast-action(int);
+    callback toast-dismissed(int);
+    // A dialog closed: toasts behind it get their full time again.
+    callback dialogs-closed();
+    callback copy-text(string) -> bool;
+    callback command-edited(string);
+    callback command-escaped() -> bool;
+    callback resolve();
+    callback copy-report() -> bool;
+    callback tab-changed(int);
+    callback shell-changed(int);
+    callback context-changed(int);
+    callback cwd-accepted(string);
+    callback cwd-escaped() -> bool;
+    callback action(int);
+    callback row-clicked(int);
+    callback row-opened(int);
+    callback preview-apply();
+    callback preview-cancel();
+    callback entry-edited(string);
+    callback entry-escaped() -> bool;
+    callback entry-browse-clicked();
+    callback entry-ok();
+    callback entry-cancel();
+    // A key nothing focused took (list keys, Alt+Up/Down, Delete, F2, F5). True when Rust used it.
+    callback key(string, bool, bool, bool) -> bool;
+
+    public function focus-list() {
+        list.focus-list();
+    }
+
+    public function focus-command() {
+        bar.focus-command();
+    }
+
+    changed dialog-open => {
+        if (!self.dialog-open) {
+            root.dialogs-closed();
+        }
+    }
+
+    keys := FocusScope {
+        focus-on-click: false;
+        // The window's key catcher is no Tab stop: a Tab past a dialog's last button must not land
+        // here, where Escape would not reach the dialog (About v2 has three stops; 2026-11-04).
+        focus-on-tab-navigation: false;
+        key-pressed(e) => {
+            if (!root.dialog-open && root.key(e.text, e.modifiers.control, e.modifiers.shift, e.modifiers.alt)) {
+                return accept;
+            }
+            reject
+        }
+
+        VerticalLayout {
+            bar := TopBar {
+                command <=> root.command;
+                resolving: root.resolving;
+                portable: root.portable;
+                portable-tip: root.portable-tip;
+                inert: root.dialog-open;
+                command-edited(t) => { root.command-edited(t); }
+                command-escaped => { root.command-escaped() }
+                resolve => { root.resolve(); }
+                copy-report => { root.copy-report() }
+                toggle-theme => { root.toggle-theme(); }
+                about => { root.about-open = true; }
+            }
+            TabBar {
+                tab: root.tab;
+                shells: root.shells;
+                shell: root.shell;
+                contexts: root.contexts;
+                context: root.context;
+                cwd-shown: root.cwd-shown;
+                cwd-editable: root.cwd-editable;
+                cwd <=> root.cwd;
+                inert: root.dialog-open;
+                tab-changed(i) => { root.tab-changed(i); }
+                shell-changed(i) => { root.shell-changed(i); }
+                context-changed(i) => { root.context-changed(i); }
+                cwd-accepted(t) => { root.cwd-accepted(t); }
+                cwd-escaped => { root.cwd-escaped() }
+            }
+            if root.banner-lines.length > 0 || root.banner-actions.length > 0: Banner {
+                lines: root.banner-lines;
+                actions: root.banner-actions;
+                inert: root.dialog-open;
+                action(i) => { root.action(i); }
+            }
+            HorizontalLayout {
+                vertical-stretch: 1;
+                list := RowList {
+                    horizontal-stretch: 5;
+                    min-width: 440px;
+                    rows: root.rows;
+                    label: root.list-label;
+                    empty-text: root.empty-text;
+                    scroll-top: root.scroll-top;
+                    scroll-seq: root.scroll-seq;
+                    inert: root.dialog-open;
+                    row-clicked(i) => { root.row-clicked(i); }
+                    row-opened(i) => { root.row-opened(i); }
+                    key(t, c, s, a) => { root.key(t, c, s, a) }
+                }
+                Rectangle {
+                    width: 1px;
+                    background: Theme.line;
+                }
+                DetailPanel {
+                    horizontal-stretch: 4;
+                    min-width: 360px;
+                    title: root.detail-title;
+                    state: root.detail-state;
+                    word: root.detail-word;
+                    headline: root.detail-headline;
+                    pairs: root.detail-pairs;
+                    lines: root.detail-lines;
+                    actions: root.detail-actions;
+                    empty-text: root.detail-empty;
+                    inert: root.dialog-open;
+                    action(i) => { root.action(i); }
+                }
+            }
+
+            // ---- the status line ----
+            Rectangle {
+                height: 26px;
+                background: Theme.bg;
+                Rectangle { y: 0; height: 1px; background: Theme.line; }
+                HorizontalLayout {
+                    padding-left: 14px;
+                    padding-right: 14px;
+                    spacing: 12px;
+                    Text {
+                        text: root.status-left;
+                        font-family: Type.mono;
+                        color: Theme.ink-3;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                        min-width: 0px;
+                    }
+                    Text {
+                        text: root.status-right;
+                        font-family: Type.mono;
+                        color: Theme.ink-3;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+
+    // Toasts, bottom right, newest at the bottom, above the status line. In sight behind a
+    // dialog (under its scrim), out of the Tab order there.
+    VerticalLayout {
+        x: root.width - self.width - 14px;
+        y: root.height - self.height - 40px;
+        width: 380px;
+        height: self.preferred-height;
+        spacing: 8px;
+        for t in root.toasts: Toast {
+            text: t.text;
+            kind: t.kind;
+            action: t.action;
+            inert: root.dialog-open;
+            action-clicked => { root.toast-action(t.id); }
+            dismissed => { root.toast-dismissed(t.id); }
+            copy => { root.copy-text(t.text) }
+        }
+    }
+
+    if root.preview-open && !root.entry-open: PreviewDialog {
+        width: root.width;
+        height: root.height;
+        p: root.preview;
+        apply => { root.preview-apply(); }
+        cancelled => { root.preview-cancel(); }
+    }
+
+    if root.entry-open: EntryDialog {
+        width: root.width;
+        height: root.height;
+        title: root.entry-title;
+        text <=> root.entry-text;
+        problem: root.entry-problem;
+        ok-text: root.entry-ok-text;
+        can-browse: root.entry-browse;
+        edited(t) => { root.entry-edited(t); }
+        escaped => { root.entry-escaped() }
+        browse => { root.entry-browse-clicked(); }
+        ok => { root.entry-ok(); }
+        cancelled => { root.entry-cancel(); }
+    }
+
+    if root.about-open: AboutDialog {
+        width: root.width;
+        height: root.height;
+        line: root.about-line;
+        rows: root.check-rows;
+        checking: root.checking;
+        checked: root.checked;
+        check => { root.check-install(); }
+        open-site => { root.open-site(); }
+        closed => { root.about-open = false; }
+    }
+
+    TipLayer {
+        width: root.width;
+        height: root.height;
+    }
+}
